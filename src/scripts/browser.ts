@@ -11,36 +11,41 @@ export const SUPPORTED_BROWSERS = [
 
 export const GET_ACTIVE_APP_SCRIPT = `
 tell application "System Events"
-    set activeApp to name of application processes whose frontmost is true
+    set activeApp to name of first application process whose frontmost is true
+    return activeApp
 end tell
 `;
 
-export const GET_LINK_FROM_ARC_SCRIPT = `
+const getLinkFromArcScript = (separator: string) => `
 tell application "Arc"
-    return URL of active tab of front window & "\\t" & title of active tab of front window
+    if (exists front window) then
+        return URL of active tab of front window & "${separator}" & title of active tab of front window
+    else
+        error "Arc is not displaying a web page!"
+    end if
 end tell
 `;
 
-export const GET_LINK_FROM_SAFARI_SCRIPT = `
+const getLinkFromSafariScript = (separator: string) => `
 tell application "Safari"
     if (exists front document) then
-        return URL of front document & "\\t" & name of front document
+        return URL of front document & "${separator}" & name of front document
     else
         error "Safari is not displaying a web page!"
     end if
 end tell
 `;
 
-export const GET_LINK_FROM_BROWSER_SCRIPT = (browser: string) => {
+export const GET_LINK_FROM_BROWSER_SCRIPT = (browser: string, separator = "\\t") => {
   if (browser == "Safari") {
-    return GET_LINK_FROM_SAFARI_SCRIPT;
+    return getLinkFromSafariScript(separator);
   } else if (browser == "Arc") {
-    return GET_LINK_FROM_ARC_SCRIPT;
+    return getLinkFromArcScript(separator);
   } else {
     return `
         tell application "${browser}"
             if (exists active tab of front window) then
-                return URL of active tab of front window & "\\t" & title of active tab of front window
+                return URL of active tab of front window & "${separator}" & title of active tab of front window
             else
                 error "${browser} is not displaying a web page!"
             end if
