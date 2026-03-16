@@ -73,8 +73,7 @@ export default function Capture() {
   const [hasManualTitleOverride, setHasManualTitleOverride] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
-  const [screenshots, setScreenshots] = useState<string[]>([]);
-  const [screenshotOcrText, setScreenshotOcrText] = useState<string>("");
+  const [screenshots, setScreenshots] = useState<{ name: string; ocrText: string }[]>([]);
   const [clipboardOcrText, setClipboardOcrText] = useState<string>("");
 
   const fileNameRef = useRef(fileName);
@@ -229,6 +228,7 @@ close access fileRef`);
 
   useEffect(() => {
     const effectiveHighlight = includeHighlight ? selectedText : "";
+    const screenshotOcrText = screenshots.map((s) => s.ocrText).filter(Boolean).join(" ");
     const combinedOcrText = [screenshotOcrText, clipboardOcrText].filter(Boolean).join(" ");
     const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent || combinedOcrText;
     if (!hasContext) {
@@ -296,7 +296,7 @@ close access fileRef`);
       cancelled = true;
       controller.abort();
     };
-  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent, screenshotOcrText, clipboardOcrText]);
+  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent, screenshots, clipboardOcrText]);
 
   useEffect(() => {
     const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
@@ -330,7 +330,7 @@ close access fileRef`);
       link?: string;
       highlight?: boolean;
       highlightAsCodeBlock?: boolean;
-      capturedScreenshots?: string[];
+      capturedScreenshots?: { name: string; ocrText: string }[];
     }) => {
       const data: string[] = [];
       if (content) {
@@ -343,7 +343,11 @@ close access fileRef`);
         data.push(highlightAsCodeBlock ? `\`\`\`\n${selectedText}\n\`\`\`` : `> ${selectedText}`);
       }
       if (capturedScreenshots && capturedScreenshots.length > 0) {
-        data.push(capturedScreenshots.map((name) => `![[${name}]]`).join("\n\n"));
+        data.push(capturedScreenshots.map((s) => {
+          const parts = [`![[${s.name}]]`];
+          if (s.ocrText) parts.push(`> ${s.ocrText}`);
+          return parts.join("\n\n");
+        }).join("\n\n"));
       }
       return data.join("\n\n");
     };
@@ -387,12 +391,9 @@ close access fileRef`);
     await open("raycast://");
 
     if (fs.existsSync(screenshotPath)) {
-      setScreenshots((prev) => [...prev, screenshotName]);
       await showToast({ style: Toast.Style.Success, title: "Screenshot captured, extracting text..." });
       const ocrText = await extractTextFromImage(screenshotPath);
-      if (ocrText) {
-        setScreenshotOcrText((prev) => (prev ? `${prev} ${ocrText}` : ocrText));
-      }
+      setScreenshots((prev) => [...prev, { name: screenshotName, ocrText }]);
     } else {
       await showToast({ style: Toast.Style.Animated, title: "Screenshot cancelled" });
     }
@@ -409,7 +410,7 @@ close access fileRef`);
   async function previewLastScreenshot() {
     const last = screenshots[screenshots.length - 1];
     if (!last) return;
-    const fullPath = getScreenshotAbsolutePath(last);
+    const fullPath = getScreenshotAbsolutePath(last.name);
     if (!fullPath || !fs.existsSync(fullPath)) return;
     await open(fullPath);
   }
@@ -417,21 +418,11 @@ close access fileRef`);
   async function removeLastScreenshot() {
     const last = screenshots[screenshots.length - 1];
     if (!last) return;
-    const fullPath = getScreenshotAbsolutePath(last);
+    const fullPath = getScreenshotAbsolutePath(last.name);
     if (fullPath && fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
     }
-    const remaining = screenshots.slice(0, -1);
-    setScreenshots(remaining);
-
-    const ocrParts = await Promise.all(
-      remaining.map((name) => {
-        const p = getScreenshotAbsolutePath(name);
-        return p ? extractTextFromImage(p) : Promise.resolve("");
-      })
-    );
-    setScreenshotOcrText(ocrParts.filter(Boolean).join(" "));
-
+    setScreenshots((prev) => prev.slice(0, -1));
     await showToast({ style: Toast.Style.Success, title: "Screenshot removed" });
   }
 
@@ -484,14 +475,14 @@ close access fileRef`);
       const vaultObj = vaultsWithPlugin.find((v) => v.name === vault);
       if (!vaultObj) throw new Error("Vault not found");
 
-      const allScreenshots = [...screenshots];
+      const allScreenshots: { name: string; ocrText: string }[] = [...screenshots];
       if (includeClipboardImage && clipboardHasImage) {
         const attachmentsDir = fsPath.join(vaultObj.path, normalizedPath || DEFAULT_PATH, "attachments");
         if (!fs.existsSync(attachmentsDir)) {
           fs.mkdirSync(attachmentsDir, { recursive: true });
         }
         const savedName = await saveClipboardImage(attachmentsDir);
-        if (savedName) allScreenshots.push(savedName);
+        if (savedName) allScreenshots.push({ name: savedName, ocrText: clipboardOcrText });
       }
 
       const noteData = formattedData({
@@ -605,7 +596,6 @@ close access fileRef`);
                 setNoteContent("");
                 setDebouncedNoteContent("");
                 setScreenshots([]);
-                setScreenshotOcrText("");
                 setClipboardOcrText("");
                 setFileName("");
                 setAutoTitle("");
@@ -711,7 +701,7 @@ close access fileRef`);
         {screenshots.length > 0 && (
           <Form.Description
             title="Screenshots"
-            text={screenshots.map((name, i) => `${i + 1}. ${name}`).join("\n")}
+            text={screenshots.map((s, i) => `${i + 1}. ${s.name}`).join("\n")}
           />
         )}
       </Form>
