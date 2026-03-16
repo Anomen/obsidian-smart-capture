@@ -347,7 +347,7 @@ end try`);
       if (capturedScreenshots && capturedScreenshots.length > 0) {
         data.push(capturedScreenshots.map((s) => {
           const parts = [`![[${s.name}]]`];
-          if (s.ocrText) parts.push(`> ${s.ocrText}`);
+          if (s.ocrText) parts.push(`> [!quote]- OCR Text\n> ${s.ocrText.replace(/\n/g, "\n> ")}`);
           return parts.join("\n\n");
         }).join("\n\n"));
       }
