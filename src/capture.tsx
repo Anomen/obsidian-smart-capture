@@ -406,7 +406,6 @@ export default function Capture() {
             />
             <Action
               title="Clear Capture"
-              shortcut={{ modifiers: ["opt"], key: "backspace" }}
               onAction={() => {
                 setActiveAppName("");
                 setResourceInfo("");
