@@ -526,15 +526,14 @@ close access fileRef`);
         fs.writeFileSync(absolutePath, initialNoteContent, "utf8");
       }
 
+      if (options?.openInObsidian) {
+        await open(obsidianTarget);
+        await runAppleScript('tell application "Obsidian" to activate');
+      }
+
       popToRoot();
       closeMainWindow();
       showHUD("Note Captured", { clearRootSearch: true });
-
-      if (options?.openInObsidian) {
-        setTimeout(() => {
-          void open(obsidianTarget);
-        }, 200);
-      }
 
     } catch (e) {
       showToast({
@@ -566,10 +565,12 @@ close access fileRef`);
           <ActionPanel>
             <Action.SubmitForm
               title="Capture"
+              icon={Icon.Download}
               onSubmit={createNewNote}
             />
             <Action.SubmitForm
               title="Capture and Open in Obsidian"
+              icon={Icon.ArrowRight}
               onSubmit={createNewNoteAndOpen}
             />
             <Action
@@ -596,6 +597,7 @@ close access fileRef`);
             )}
             <Action
               title="Clear Capture"
+              icon={Icon.XMarkCircle}
               onAction={() => {
                 setActiveAppName("");
                 setResourceInfo("");
