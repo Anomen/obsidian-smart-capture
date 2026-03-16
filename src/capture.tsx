@@ -14,7 +14,7 @@ import {
   closeMainWindow,
   List,
 } from "@raycast/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { runAppleScript } from "@raycast/utils";
 import fs from "fs";
 import fsPath from "path";
@@ -36,6 +36,7 @@ import { generateAITitle, isAITitleEnabled } from "./utils/ai-title";
 
 const DEFAULT_PATH = "inbox";
 const LINK_SEPARATOR = DEFAULT_LINK_SEPARATOR;
+const NOTE_DEBOUNCE_MS = 800;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,10 +60,21 @@ export default function Capture() {
 
   const [activeAppName, setActiveAppName] = useState<string>("");
 
+  const [noteContent, setNoteContent] = useState<string>("");
+  const [debouncedNoteContent, setDebouncedNoteContent] = useState<string>("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [fileName, setFileName] = useState<string>("");
   const [autoTitle, setAutoTitle] = useState<string>("");
   const [hasManualTitleOverride, setHasManualTitleOverride] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+
+  const fileNameRef = useRef(fileName);
+  const autoTitleRef = useRef(autoTitle);
+  const hasManualTitleOverrideRef = useRef(hasManualTitleOverride);
+  fileNameRef.current = fileName;
+  autoTitleRef.current = autoTitle;
+  hasManualTitleOverrideRef.current = hasManualTitleOverride;
 
   useEffect(() => {
     let mounted = true;
@@ -153,9 +165,19 @@ export default function Capture() {
   }, []);
 
   useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedNoteContent(noteContent);
+    }, NOTE_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [noteContent]);
+
+  useEffect(() => {
     if (!activeAppName) return;
 
-    const hasContext = resourceInfo || selectedText;
+    const hasContext = resourceInfo || selectedText || debouncedNoteContent;
     if (!hasContext) return;
 
     let aiEnabled = false;
@@ -169,14 +191,13 @@ export default function Capture() {
       if (!resourceInfo) return;
       const generated = resolveAutoTitle(resourceInfo);
       setAutoTitle(generated);
-      if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+      if (shouldApplyAutoTitle(fileNameRef.current, autoTitleRef.current, hasManualTitleOverrideRef.current)) {
         setFileName(generated);
       }
       return;
     }
 
-    // Non-browser capture with no text: nothing for AI to work with
-    if (!resourceInfo && !selectedText) return;
+    if (!resourceInfo && !selectedText && !debouncedNoteContent) return;
 
     const controller = new AbortController();
     let cancelled = false;
@@ -188,6 +209,7 @@ export default function Capture() {
           text: selectedText || undefined,
           appName: activeAppName,
           pageTitle: resourceInfo || undefined,
+          noteContent: debouncedNoteContent || undefined,
           signal: controller.signal,
         });
 
@@ -195,16 +217,15 @@ export default function Capture() {
 
         const generated = resolveAutoTitle(aiResult || resourceInfo);
         setAutoTitle(generated);
-        if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+        if (shouldApplyAutoTitle(fileNameRef.current, autoTitleRef.current, hasManualTitleOverrideRef.current)) {
           setFileName(generated);
         }
       } catch {
         if (cancelled) return;
-        // Fall back to page title for browsers, empty for non-browsers
         if (resourceInfo) {
           const generated = resolveAutoTitle(resourceInfo);
           setAutoTitle(generated);
-          if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+          if (shouldApplyAutoTitle(fileNameRef.current, autoTitleRef.current, hasManualTitleOverrideRef.current)) {
             setFileName(generated);
           }
         }
@@ -219,7 +240,7 @@ export default function Capture() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeAppName, resourceInfo, selectedText, hasManualTitleOverride, fileName, autoTitle]);
+  }, [activeAppName, resourceInfo, selectedText, debouncedNoteContent]);
 
   useEffect(() => {
     const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
@@ -394,6 +415,8 @@ export default function Capture() {
                 setResourceInfo("");
                 setSelectedResource("");
                 setSelectedText("");
+                setNoteContent("");
+                setDebouncedNoteContent("");
                 setFileName("");
                 setAutoTitle("");
                 setHasManualTitleOverride(false);
@@ -468,7 +491,15 @@ export default function Capture() {
           />
         )}
 
-        <Form.TextArea title="Note" id="content" placeholder={"Notes about the resource"} enableMarkdown={true} autoFocus />
+        <Form.TextArea
+          title="Note"
+          id="content"
+          placeholder={"Notes about the resource"}
+          enableMarkdown={true}
+          autoFocus
+          value={noteContent}
+          onChange={setNoteContent}
+        />
 
         {selectedResource && resourceInfo && (
           <Form.TagPicker id="link" title="Link" defaultValue={[selectedResource]}>
