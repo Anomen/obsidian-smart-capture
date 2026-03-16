@@ -123,6 +123,35 @@ export default function Capture() {
     let mounted = true;
 
     const setText = async () => {
+      try {
+        const tmpPath = fsPath.join(environment.supportPath, "clipboard-preview.png");
+        const saved = await runAppleScript(`
+try
+    set imgClasses to {«class PNGf», «class TIFF», JPEG picture}
+    set imageData to missing value
+    repeat with cls in imgClasses
+        try
+            set imageData to the clipboard as cls
+            exit repeat
+        end try
+    end repeat
+    if imageData is missing value then return "false"
+    set fileRef to open for access POSIX file "${tmpPath.replace(/"/g, '\\"')}" with write permission
+    write imageData to fileRef
+    close access fileRef
+    return "true"
+on error
+    return "false"
+end try`);
+        if (mounted && saved.trim() === "true") {
+          setClipboardHasImage(true);
+          setIncludeClipboardImage(true);
+          setClipboardImageTempPath(tmpPath);
+        }
+      } catch {
+        // no image in clipboard
+      }
+
       let detectedApp = "";
       try {
         detectedApp = (await runAppleScript(GET_ACTIVE_APP_SCRIPT)).trim();
@@ -167,33 +196,6 @@ export default function Capture() {
         }
       } catch (error) {
         console.log(error);
-      }
-
-      try {
-        const hasImage = await runAppleScript(`
-try
-    the clipboard as «class PNGf»
-    return "true"
-on error
-    return "false"
-end try`);
-        if (mounted && hasImage.trim() === "true") {
-          setClipboardHasImage(true);
-          setIncludeClipboardImage(true);
-          const tmpPath = fsPath.join(environment.supportPath, "clipboard-preview.png");
-          try {
-            await runAppleScript(`
-set imageData to the clipboard as «class PNGf»
-set fileRef to open for access POSIX file "${tmpPath.replace(/"/g, '\\"')}" with write permission
-write imageData to fileRef
-close access fileRef`);
-            if (mounted) setClipboardImageTempPath(tmpPath);
-          } catch {
-            // failed to save temp clipboard image
-          }
-        }
-      } catch {
-        // no image in clipboard
       }
     };
 
@@ -441,7 +443,15 @@ close access fileRef`);
 
     try {
       await runAppleScript(`
-set imageData to the clipboard as «class PNGf»
+set imgClasses to {«class PNGf», «class TIFF», JPEG picture}
+set imageData to missing value
+repeat with cls in imgClasses
+    try
+        set imageData to the clipboard as cls
+        exit repeat
+    end try
+end repeat
+if imageData is missing value then error "No image"
 set outputPath to "${imagePath.replace(/"/g, '\\"')}"
 set fileRef to open for access POSIX file outputPath with write permission
 write imageData to fileRef
