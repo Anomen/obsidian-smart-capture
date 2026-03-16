@@ -1,5 +1,6 @@
 import {
   ActionPanel,
+  Clipboard,
   Form,
   getSelectedText,
   Action,
@@ -148,8 +149,11 @@ export default function Capture() {
       }
 
       try {
-        const data = await getSelectedText();
-        if (mounted && data) {
+        const [data, clipboardText] = await Promise.all([
+          getSelectedText().catch(() => ""),
+          Clipboard.readText().catch(() => undefined),
+        ]);
+        if (mounted && data && data !== clipboardText) {
           setSelectedText(data);
         }
       } catch (error) {
