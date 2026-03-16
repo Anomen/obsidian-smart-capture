@@ -29,6 +29,7 @@ import {
   parseLinkInfo,
   sanitizeFileName,
 } from "./utils/web-capture";
+import { getTemplaterTemplateContentForNote, mergeTemplateWithCapturedContent } from "./utils/templater";
 import { resolveAutoTitle, shouldApplyAutoTitle } from "./utils/title-autofill";
 
 const DEFAULT_PATH = "inbox";
@@ -247,7 +248,9 @@ export default function Capture() {
       if (fs.existsSync(absolutePath)) {
         fs.appendFileSync(absolutePath, `\n\n${noteData}`, "utf8");
       } else {
-        fs.writeFileSync(absolutePath, noteData, "utf8");
+        const templateContent = getTemplaterTemplateContentForNote(vaultObj.path, noteFileName);
+        const initialNoteContent = mergeTemplateWithCapturedContent(templateContent, noteData);
+        fs.writeFileSync(absolutePath, initialNoteContent, "utf8");
       }
 
       popToRoot();
