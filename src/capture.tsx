@@ -353,6 +353,33 @@ export default function Capture() {
     }
   }
 
+  function getScreenshotAbsolutePath(name: string) {
+    const vaultName = currentVaultRef.current;
+    const vaultObj = vaultsWithPlugin.find((v) => v.name === vaultName);
+    if (!vaultObj) return null;
+    const storagePath = normalizePath(currentPathRef.current) || DEFAULT_PATH;
+    return fsPath.join(vaultObj.path, storagePath, "attachments", name);
+  }
+
+  async function previewLastScreenshot() {
+    const last = screenshots[screenshots.length - 1];
+    if (!last) return;
+    const fullPath = getScreenshotAbsolutePath(last);
+    if (!fullPath || !fs.existsSync(fullPath)) return;
+    await open(fullPath);
+  }
+
+  async function removeLastScreenshot() {
+    const last = screenshots[screenshots.length - 1];
+    if (!last) return;
+    const fullPath = getScreenshotAbsolutePath(last);
+    if (fullPath && fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+    setScreenshots((prev) => prev.slice(0, -1));
+    await showToast({ style: Toast.Style.Success, title: "Screenshot removed" });
+  }
+
   async function captureNote(
     {
       fileName: rawFileName,
@@ -474,6 +501,22 @@ export default function Capture() {
               shortcut={{ modifiers: ["cmd", "shift"], key: "5" }}
               onAction={captureScreenshot}
             />
+            {screenshots.length > 0 && (
+              <Action
+                title="Preview Last Screenshot"
+                icon={Icon.Eye}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+                onAction={previewLastScreenshot}
+              />
+            )}
+            {screenshots.length > 0 && (
+              <Action
+                title="Remove Last Screenshot"
+                icon={Icon.Trash}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "backspace" }}
+                onAction={removeLastScreenshot}
+              />
+            )}
             <Action
               title="Clear Capture"
               onAction={() => {
@@ -589,7 +632,7 @@ export default function Capture() {
         {screenshots.length > 0 && (
           <Form.Description
             title="Screenshots"
-            text={`${screenshots.length} screenshot(s) attached`}
+            text={screenshots.map((name, i) => `${i + 1}. ${name}`).join("\n")}
           />
         )}
       </Form>
