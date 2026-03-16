@@ -505,7 +505,7 @@ close access fileRef`);
 
       let prefix = "";
       if (allScreenshots.length > 0) prefix += "📸";
-      if (linkValue) prefix += "🔗";
+      if (linkValue) prefix += "🌐";
       const baseName = sanitizeFileName(rawFileName || resourceInfo);
       const safeFileName = prefix ? `${prefix} ${baseName}` : baseName;
       const fullFilePath = normalizedPath ? `${normalizedPath}/${safeFileName}` : safeFileName;
