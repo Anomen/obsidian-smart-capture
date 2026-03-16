@@ -3,6 +3,7 @@ import {
   Form,
   getSelectedText,
   Action,
+  open,
   showToast,
   Toast,
   showHUD,
@@ -18,7 +19,7 @@ import { runAppleScript } from "@raycast/utils";
 import fs from "fs";
 import fsPath from "path";
 import { GET_ACTIVE_APP_SCRIPT, GET_LINK_FROM_BROWSER_SCRIPT, SUPPORTED_BROWSERS } from "./scripts/browser";
-import { useObsidianVaults, vaultPluginCheck } from "./utils/utils";
+import { ObsidianTargetType, getObsidianTarget, useObsidianVaults, vaultPluginCheck } from "./utils/utils";
 import { NoVaultFoundMessage } from "./components/Notifications/NoVaultFoundMessage";
 import AdvancedURIPluginNotInstalled from "./components/Notifications/AdvancedURIPluginNotInstalled";
 import {
@@ -206,15 +207,18 @@ export default function Capture() {
     };
   }, [resourceInfo, selectedText]);
 
-  async function createNewNote({
-    fileName: rawFileName,
-    content,
-    link,
-    vault,
-    path,
-    highlight,
-    highlightAsCodeBlock,
-  }: Form.Values) {
+  async function captureNote(
+    {
+      fileName: rawFileName,
+      content,
+      link,
+      vault,
+      path,
+      highlight,
+      highlightAsCodeBlock,
+    }: Form.Values,
+    options?: { openInObsidian?: boolean }
+  ) {
     const linkValue = Array.isArray(link) ? link[0] : link;
     const safeFileName = sanitizeFileName(rawFileName || resourceInfo);
     const normalizedPath = normalizePath(path);
@@ -251,6 +255,7 @@ export default function Capture() {
 
       const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
       const absolutePath = fsPath.join(vaultObj.path, noteFileName);
+      const obsidianTarget = getObsidianTarget({ type: ObsidianTargetType.OpenPath, path: absolutePath });
       const dir = fsPath.dirname(absolutePath);
 
       if (!fs.existsSync(dir)) {
@@ -269,6 +274,12 @@ export default function Capture() {
       closeMainWindow();
       showHUD("Note Captured", { clearRootSearch: true });
 
+      if (options?.openInObsidian) {
+        setTimeout(() => {
+          void open(obsidianTarget);
+        }, 200);
+      }
+
       if (fetchWarning) {
         await showToast({
           style: Toast.Style.Failure,
@@ -283,6 +294,14 @@ export default function Capture() {
     }
   }
 
+  async function createNewNote(values: Form.Values) {
+    await captureNote(values);
+  }
+
+  async function createNewNoteAndOpen(values: Form.Values) {
+    await captureNote(values, { openInObsidian: true });
+  }
+
   if (!ready || !defaultsLoaded) {
     return <List isLoading={true}></List>;
   } else if (allVaults.length === 0) {
@@ -294,7 +313,14 @@ export default function Capture() {
       <Form
         actions={
           <ActionPanel>
-            <Action.SubmitForm title="Capture" onSubmit={createNewNote} />
+            <Action.SubmitForm
+              title="Capture"
+              onSubmit={createNewNote}
+            />
+            <Action.SubmitForm
+              title="Capture and Open in Obsidian"
+              onSubmit={createNewNoteAndOpen}
+            />
             <Action
               title="Clear Capture"
               shortcut={{ modifiers: ["opt"], key: "backspace" }}
