@@ -175,8 +175,6 @@ export default function Capture() {
   }, [noteContent]);
 
   useEffect(() => {
-    if (!activeAppName) return;
-
     const hasContext = resourceInfo || selectedText || debouncedNoteContent;
     if (!hasContext) return;
 
@@ -196,8 +194,6 @@ export default function Capture() {
       }
       return;
     }
-
-    if (!resourceInfo && !selectedText && !debouncedNoteContent) return;
 
     const controller = new AbortController();
     let cancelled = false;
