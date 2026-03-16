@@ -1,6 +1,7 @@
 import {
   ActionPanel,
   Clipboard,
+  environment,
   Form,
   getSelectedText,
   Action,
@@ -32,6 +33,7 @@ import {
 import { getTemplaterTemplateContentForNote, mergeTemplateWithCapturedContent } from "./utils/templater";
 import { resolveAutoTitle, shouldApplyAutoTitle } from "./utils/title-autofill";
 import { generateAITitle, isAITitleEnabled } from "./utils/ai-title";
+import { extractTextFromImage } from "./utils/ocr";
 
 const DEFAULT_PATH = "inbox";
 const LINK_SEPARATOR = DEFAULT_LINK_SEPARATOR;
@@ -58,6 +60,7 @@ export default function Capture() {
 
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const [includeClipboardImage, setIncludeClipboardImage] = useState(false);
+  const [clipboardImageTempPath, setClipboardImageTempPath] = useState<string>("");
 
   const [activeAppName, setActiveAppName] = useState<string>("");
 
@@ -71,6 +74,8 @@ export default function Capture() {
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
   const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [screenshotOcrText, setScreenshotOcrText] = useState<string>("");
+  const [clipboardOcrText, setClipboardOcrText] = useState<string>("");
 
   const fileNameRef = useRef(fileName);
   const autoTitleRef = useRef(autoTitle);
@@ -176,6 +181,17 @@ end try`);
         if (mounted && hasImage.trim() === "true") {
           setClipboardHasImage(true);
           setIncludeClipboardImage(true);
+          const tmpPath = fsPath.join(environment.supportPath, "clipboard-preview.png");
+          try {
+            await runAppleScript(`
+set imageData to the clipboard as «class PNGf»
+set fileRef to open for access POSIX file "${tmpPath.replace(/"/g, '\\"')}" with write permission
+write imageData to fileRef
+close access fileRef`);
+            if (mounted) setClipboardImageTempPath(tmpPath);
+          } catch {
+            // failed to save temp clipboard image
+          }
         }
       } catch {
         // no image in clipboard
@@ -200,8 +216,21 @@ end try`);
   }, [noteContent]);
 
   useEffect(() => {
+    if (!includeClipboardImage || !clipboardImageTempPath) {
+      setClipboardOcrText("");
+      return;
+    }
+    let cancelled = false;
+    extractTextFromImage(clipboardImageTempPath).then((text) => {
+      if (!cancelled) setClipboardOcrText(text);
+    });
+    return () => { cancelled = true; };
+  }, [includeClipboardImage, clipboardImageTempPath]);
+
+  useEffect(() => {
     const effectiveHighlight = includeHighlight ? selectedText : "";
-    const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent;
+    const combinedOcrText = [screenshotOcrText, clipboardOcrText].filter(Boolean).join(" ");
+    const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent || combinedOcrText;
     if (!hasContext) {
       setAutoTitle("");
       setFileName("");
@@ -236,6 +265,7 @@ end try`);
           appName: activeAppName,
           pageTitle: resourceInfo || undefined,
           noteContent: debouncedNoteContent || undefined,
+          screenshotText: combinedOcrText || undefined,
           signal: controller.signal,
         });
 
@@ -266,7 +296,7 @@ end try`);
       cancelled = true;
       controller.abort();
     };
-  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent]);
+  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent, screenshotOcrText, clipboardOcrText]);
 
   useEffect(() => {
     const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
@@ -358,7 +388,11 @@ end try`);
 
     if (fs.existsSync(screenshotPath)) {
       setScreenshots((prev) => [...prev, screenshotName]);
-      await showToast({ style: Toast.Style.Success, title: "Screenshot captured" });
+      await showToast({ style: Toast.Style.Success, title: "Screenshot captured, extracting text..." });
+      const ocrText = await extractTextFromImage(screenshotPath);
+      if (ocrText) {
+        setScreenshotOcrText((prev) => (prev ? `${prev} ${ocrText}` : ocrText));
+      }
     } else {
       await showToast({ style: Toast.Style.Animated, title: "Screenshot cancelled" });
     }
@@ -557,9 +591,12 @@ close access fileRef`);
                 setSelectedText("");
                 setClipboardHasImage(false);
                 setIncludeClipboardImage(false);
+                setClipboardImageTempPath("");
                 setNoteContent("");
                 setDebouncedNoteContent("");
                 setScreenshots([]);
+                setScreenshotOcrText("");
+                setClipboardOcrText("");
                 setFileName("");
                 setAutoTitle("");
                 setHasManualTitleOverride(false);

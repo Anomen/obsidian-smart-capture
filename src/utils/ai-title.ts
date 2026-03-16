@@ -7,6 +7,7 @@ interface GenerateAITitleOptions {
   appName: string;
   pageTitle?: string;
   noteContent?: string;
+  screenshotText?: string;
   signal?: AbortSignal;
 }
 
@@ -15,7 +16,7 @@ function truncateText(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + "...";
 }
 
-function buildPrompt({ text, appName, pageTitle, noteContent }: Omit<GenerateAITitleOptions, "signal">): string {
+function buildPrompt({ text, appName, pageTitle, noteContent, screenshotText }: Omit<GenerateAITitleOptions, "signal">): string {
   const parts: string[] = [
     "Generate a short title (3-8 words) for a note. The title must only reflect what is explicitly stated in the content below. Do NOT add topics, categories, or summaries that are not in the content.",
   ];
@@ -31,6 +32,10 @@ function buildPrompt({ text, appName, pageTitle, noteContent }: Omit<GenerateAIT
   if (noteContent) {
     const label = text || pageTitle ? "Additional notes" : "Content";
     parts.push(`${label}: ${truncateText(noteContent, MAX_TEXT_LENGTH)}`);
+  }
+
+  if (screenshotText) {
+    parts.push(`Text extracted from attached screenshot(s): ${truncateText(screenshotText, MAX_TEXT_LENGTH)}`);
   }
 
   if (appName && (text || pageTitle)) {
@@ -52,7 +57,7 @@ export function isAITitleEnabled(): boolean {
 }
 
 export async function generateAITitle(options: GenerateAITitleOptions): Promise<string> {
-  if (!options.text && !options.pageTitle && !options.noteContent) return "";
+  if (!options.text && !options.pageTitle && !options.noteContent && !options.screenshotText) return "";
 
   try {
     const prompt = buildPrompt(options);
