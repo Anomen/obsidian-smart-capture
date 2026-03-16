@@ -17,7 +17,7 @@ function truncateText(text: string, maxLength: number): string {
 
 function buildPrompt({ text, appName, pageTitle, noteContent }: Omit<GenerateAITitleOptions, "signal">): string {
   const parts: string[] = [
-    "Generate a short title (3-8 words) for a note. The title must only reflect what is explicitly stated in the content below. If the content is vague or meaningless, use the content itself as the title. Do NOT add topics, categories, or summaries that are not in the content.",
+    "Generate a short title (3-8 words) for a note. The title must only reflect what is explicitly stated in the content below. Do NOT add topics, categories, or summaries that are not in the content.",
   ];
 
   if (pageTitle) {
