@@ -32,6 +32,7 @@ import {
 } from "./utils/web-capture";
 import { getTemplaterTemplateContentForNote, mergeTemplateWithCapturedContent } from "./utils/templater";
 import { resolveAutoTitle, shouldApplyAutoTitle } from "./utils/title-autofill";
+import { generateAITitle, isAITitleEnabled } from "./utils/ai-title";
 
 const DEFAULT_PATH = "inbox";
 const LINK_SEPARATOR = DEFAULT_LINK_SEPARATOR;
@@ -56,9 +57,12 @@ export default function Capture() {
   const [selectedResource, setSelectedResource] = useState<string>("");
   const [resourceInfo, setResourceInfo] = useState<string>("");
 
+  const [activeAppName, setActiveAppName] = useState<string>("");
+
   const [fileName, setFileName] = useState<string>("");
   const [autoTitle, setAutoTitle] = useState<string>("");
   const [hasManualTitleOverride, setHasManualTitleOverride] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -97,30 +101,35 @@ export default function Capture() {
     let mounted = true;
 
     const setText = async () => {
+      let detectedApp = "";
       try {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const activeApp = (await runAppleScript(GET_ACTIVE_APP_SCRIPT)).trim();
-          if (!SUPPORTED_BROWSERS.includes(activeApp)) {
-            break;
-          }
+        detectedApp = (await runAppleScript(GET_ACTIVE_APP_SCRIPT)).trim();
+        if (mounted) setActiveAppName(detectedApp);
+      } catch (error) {
+        console.log(error);
+      }
 
-          const linkInfoStr = await runAppleScript(GET_LINK_FROM_BROWSER_SCRIPT(activeApp, LINK_SEPARATOR));
-          const { url, title } = parseLinkInfo(linkInfoStr);
+      try {
+        if (detectedApp && SUPPORTED_BROWSERS.includes(detectedApp)) {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const linkInfoStr = await runAppleScript(GET_LINK_FROM_BROWSER_SCRIPT(detectedApp, LINK_SEPARATOR));
+            const { url, title } = parseLinkInfo(linkInfoStr);
 
-          if (url) {
-            let fallbackTitle = "";
-            try {
-              fallbackTitle = new URL(url).hostname;
-            } catch (_e) {
-              fallbackTitle = url;
+            if (url) {
+              let fallbackTitle = "";
+              try {
+                fallbackTitle = new URL(url).hostname;
+              } catch (_e) {
+                fallbackTitle = url;
+              }
+              if (!mounted) return;
+              setSelectedResource(url);
+              setResourceInfo(title || fallbackTitle);
+              break;
             }
-            if (!mounted) return;
-            setSelectedResource(url);
-            setResourceInfo(title || fallbackTitle);
-            break;
-          }
 
-          await sleep(150 * (attempt + 1));
+            await sleep(150 * (attempt + 1));
+          }
         }
       } catch (error) {
         console.log(error);
@@ -144,37 +153,93 @@ export default function Capture() {
   }, []);
 
   useEffect(() => {
-    if (!resourceInfo) {
+    if (!activeAppName) return;
+
+    const hasContext = resourceInfo || selectedText;
+    if (!hasContext) return;
+
+    let aiEnabled = false;
+    try {
+      aiEnabled = isAITitleEnabled();
+    } catch {
+      aiEnabled = false;
+    }
+
+    if (!aiEnabled) {
+      if (!resourceInfo) return;
+      const generated = resolveAutoTitle(resourceInfo);
+      setAutoTitle(generated);
+      if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+        setFileName(generated);
+      }
       return;
     }
 
-    const generated = resolveAutoTitle(resourceInfo);
-    setAutoTitle(generated);
+    // Non-browser capture with no text: nothing for AI to work with
+    if (!resourceInfo && !selectedText) return;
 
-    // Keep auto-filling title until user explicitly overrides it.
-    if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
-      setFileName(generated);
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function runAITitle() {
+      setIsGeneratingTitle(true);
+      try {
+        const aiResult = await generateAITitle({
+          text: selectedText || undefined,
+          appName: activeAppName,
+          pageTitle: resourceInfo || undefined,
+          signal: controller.signal,
+        });
+
+        if (cancelled) return;
+
+        const generated = resolveAutoTitle(aiResult || resourceInfo);
+        setAutoTitle(generated);
+        if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+          setFileName(generated);
+        }
+      } catch {
+        if (cancelled) return;
+        // Fall back to page title for browsers, empty for non-browsers
+        if (resourceInfo) {
+          const generated = resolveAutoTitle(resourceInfo);
+          setAutoTitle(generated);
+          if (shouldApplyAutoTitle(fileName, autoTitle, hasManualTitleOverride)) {
+            setFileName(generated);
+          }
+        }
+      } finally {
+        if (!cancelled) setIsGeneratingTitle(false);
+      }
     }
-  }, [resourceInfo, hasManualTitleOverride, fileName, autoTitle]);
+
+    void runAITitle();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeAppName, resourceInfo, selectedText, hasManualTitleOverride, fileName, autoTitle]);
 
   useEffect(() => {
+    const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
     if (selectedText && selectedResource) {
       showToast({
         style: Toast.Style.Success,
-        title: "Highlighted text & Source captured",
+        title: `Highlighted text & Source captured${appSuffix}`,
       });
     } else if (selectedText) {
       showToast({
         style: Toast.Style.Success,
-        title: "Highlighted text captured",
+        title: `Highlighted text captured${appSuffix}`,
       });
     } else if (selectedResource) {
       showToast({
         style: Toast.Style.Success,
-        title: "Link captured",
+        title: `Link captured${appSuffix}`,
       });
     }
-  }, [selectedText, selectedResource]);
+  }, [selectedText, selectedResource, activeAppName]);
 
   const formattedData = useMemo(() => {
     return ({
@@ -325,12 +390,14 @@ export default function Capture() {
               title="Clear Capture"
               shortcut={{ modifiers: ["opt"], key: "backspace" }}
               onAction={() => {
+                setActiveAppName("");
                 setResourceInfo("");
                 setSelectedResource("");
                 setSelectedText("");
                 setFileName("");
                 setAutoTitle("");
                 setHasManualTitleOverride(false);
+                setIsGeneratingTitle(false);
                 setWrapHighlightInCodeBlock(false);
                 setIncludePageContent(false);
                 showToast({
@@ -359,7 +426,7 @@ export default function Capture() {
         <Form.TextField
           title="Title"
           id="fileName"
-          placeholder="Title for the resource"
+          placeholder={isGeneratingTitle ? "Generating title..." : "Title for the resource"}
           value={fileName}
           onChange={(nextValue) => {
             setFileName(nextValue);
@@ -369,7 +436,6 @@ export default function Capture() {
             }
             setHasManualTitleOverride(nextValue !== autoTitle);
           }}
-          autoFocus
         />
 
         {selectedText && (
@@ -402,7 +468,7 @@ export default function Capture() {
           />
         )}
 
-        <Form.TextArea title="Note" id="content" placeholder={"Notes about the resource"} enableMarkdown={true} />
+        <Form.TextArea title="Note" id="content" placeholder={"Notes about the resource"} enableMarkdown={true} autoFocus />
 
         {selectedResource && resourceInfo && (
           <Form.TagPicker id="link" title="Link" defaultValue={[selectedResource]}>

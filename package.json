@@ -14,7 +14,18 @@
       "name": "capture",
       "title": "Obsidian Smart Capture",
       "description": "Capture whats on your screen into obsidian",
-      "mode": "view"
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "aiTitleAutofill",
+          "title": "AI Title Autofill",
+          "description": "Use AI to generate a contextual title based on the captured content and source app (requires Raycast Pro)",
+          "type": "checkbox",
+          "default": true,
+          "label": "Enable AI title suggestions",
+          "required": false
+        }
+      ]
     }
   ],
   "dependencies": {
