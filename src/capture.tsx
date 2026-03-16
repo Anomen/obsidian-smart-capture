@@ -177,7 +177,11 @@ export default function Capture() {
   useEffect(() => {
     const effectiveHighlight = includeHighlight ? selectedText : "";
     const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent;
-    if (!hasContext) return;
+    if (!hasContext) {
+      setAutoTitle("");
+      setFileName("");
+      return;
+    }
 
     let aiEnabled = false;
     try {
