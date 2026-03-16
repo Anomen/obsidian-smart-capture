@@ -561,6 +561,7 @@ close access fileRef`);
   } else if (vaultsWithPlugin.length >= 1) {
     return (
       <Form
+        isLoading={isGeneratingTitle}
         actions={
           <ActionPanel>
             <Action.SubmitForm
