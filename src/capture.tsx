@@ -34,6 +34,7 @@ import { getTemplaterTemplateContentForNote, mergeTemplateWithCapturedContent } 
 import { resolveAutoTitle, shouldApplyAutoTitle } from "./utils/title-autofill";
 import { generateAITitle, isAITitleEnabled } from "./utils/ai-title";
 import { extractTextFromImage } from "./utils/ocr";
+import { ensureDailyNote, appendCaptureToDailyNote } from "./utils/daily-note";
 
 const DEFAULT_PATH = "inbox";
 const LINK_SEPARATOR = DEFAULT_LINK_SEPARATOR;
@@ -524,6 +525,15 @@ close access fileRef`);
         const templateContent = getTemplaterTemplateContentForNote(vaultObj.path, noteFileName);
         const initialNoteContent = mergeTemplateWithCapturedContent(templateContent, noteData);
         fs.writeFileSync(absolutePath, initialNoteContent, "utf8");
+      }
+
+      try {
+        const dailyNotePath = await ensureDailyNote(vaultObj.path, vaultObj.name);
+        if (dailyNotePath) {
+          appendCaptureToDailyNote(dailyNotePath, noteFileName.replace(/\.md$/, ""));
+        }
+      } catch {
+        // non-critical, don't block the capture
       }
 
       if (options?.openInObsidian) {
