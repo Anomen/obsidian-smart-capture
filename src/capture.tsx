@@ -313,7 +313,7 @@ end try`);
         data.push(highlightAsCodeBlock ? `\`\`\`\n${selectedText}\n\`\`\`` : `> ${selectedText}`);
       }
       if (capturedScreenshots && capturedScreenshots.length > 0) {
-        data.push(capturedScreenshots.map((name) => `![[${name}]]`).join("\n"));
+        data.push(capturedScreenshots.map((name) => `![[${name}]]`).join("\n\n"));
       }
       return data.join("\n\n");
     };
@@ -431,9 +431,7 @@ close access fileRef`);
     options?: { openInObsidian?: boolean }
   ) {
     const linkValue = Array.isArray(link) ? link[0] : link;
-    const safeFileName = sanitizeFileName(rawFileName || resourceInfo);
     const normalizedPath = normalizePath(path);
-    const fullFilePath = normalizedPath ? `${normalizedPath}/${safeFileName}` : safeFileName;
 
     try {
       if (vault) await LocalStorage.setItem("vault", vault);
@@ -460,6 +458,12 @@ close access fileRef`);
         capturedScreenshots: allScreenshots,
       });
 
+      let prefix = "";
+      if (allScreenshots.length > 0) prefix += "📸";
+      if (linkValue) prefix += "🔗";
+      const baseName = sanitizeFileName(rawFileName || resourceInfo);
+      const safeFileName = prefix ? `${prefix} ${baseName}` : baseName;
+      const fullFilePath = normalizedPath ? `${normalizedPath}/${safeFileName}` : safeFileName;
       const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
       const absolutePath = fsPath.join(vaultObj.path, noteFileName);
       const obsidianTarget = getObsidianTarget({ type: ObsidianTargetType.OpenPath, path: absolutePath });
