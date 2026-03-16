@@ -17,12 +17,11 @@ function truncateText(text: string, maxLength: number): string {
 
 function buildPrompt({ text, appName, pageTitle, noteContent }: Omit<GenerateAITitleOptions, "signal">): string {
   const parts: string[] = [
-    "Generate a short, descriptive title (3-8 words) for a note.",
-    `The source app is: ${appName}.`,
+    "Generate a short title (3-8 words) for a note. The title must only reflect what is explicitly stated in the content below. If the content is vague or meaningless, use the content itself as the title. Do NOT add topics, categories, or summaries that are not in the content.",
   ];
 
   if (pageTitle) {
-    parts.push(`The page title is: ${pageTitle}.`);
+    parts.push(`Page title: ${pageTitle}.`);
   }
 
   if (text) {
@@ -30,7 +29,12 @@ function buildPrompt({ text, appName, pageTitle, noteContent }: Omit<GenerateAIT
   }
 
   if (noteContent) {
-    parts.push(`The user's own notes: ${truncateText(noteContent, MAX_TEXT_LENGTH)}`);
+    const label = text || pageTitle ? "Additional notes" : "Content";
+    parts.push(`${label}: ${truncateText(noteContent, MAX_TEXT_LENGTH)}`);
+  }
+
+  if (appName && (text || pageTitle)) {
+    parts.push(`(Source app for context only: ${appName})`);
   }
 
   parts.push("Respond with ONLY the title, no quotes or punctuation at the end.");
