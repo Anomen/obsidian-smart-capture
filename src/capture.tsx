@@ -24,9 +24,7 @@ import { ObsidianTargetType, getObsidianTarget, useObsidianVaults, vaultPluginCh
 import { NoVaultFoundMessage } from "./components/Notifications/NoVaultFoundMessage";
 import AdvancedURIPluginNotInstalled from "./components/Notifications/AdvancedURIPluginNotInstalled";
 import {
-  classifyFetchError,
   DEFAULT_LINK_SEPARATOR,
-  fetchPageContent,
   normalizePath,
   parseLinkInfo,
   sanitizeFileName,
@@ -54,10 +52,12 @@ export default function Capture() {
   const [selectedText, setSelectedText] = useState<string>("");
   const [includeHighlight, setIncludeHighlight] = useState<boolean>(true);
   const [wrapHighlightInCodeBlock, setWrapHighlightInCodeBlock] = useState<boolean>(false);
-  const [includePageContent, setIncludePageContent] = useState<boolean>(false);
 
   const [selectedResource, setSelectedResource] = useState<string>("");
   const [resourceInfo, setResourceInfo] = useState<string>("");
+
+  const [clipboardHasImage, setClipboardHasImage] = useState(false);
+  const [includeClipboardImage, setIncludeClipboardImage] = useState(false);
 
   const [activeAppName, setActiveAppName] = useState<string>("");
 
@@ -163,6 +163,22 @@ export default function Capture() {
         }
       } catch (error) {
         console.log(error);
+      }
+
+      try {
+        const hasImage = await runAppleScript(`
+try
+    the clipboard as «class PNGf»
+    return "true"
+on error
+    return "false"
+end try`);
+        if (mounted && hasImage.trim() === "true") {
+          setClipboardHasImage(true);
+          setIncludeClipboardImage(true);
+        }
+      } catch {
+        // no image in clipboard
       }
     };
 
@@ -278,14 +294,12 @@ export default function Capture() {
       link,
       highlight,
       highlightAsCodeBlock,
-      pageContent,
       capturedScreenshots,
     }: {
       content?: string;
       link?: string;
       highlight?: boolean;
       highlightAsCodeBlock?: boolean;
-      pageContent?: string;
       capturedScreenshots?: string[];
     }) => {
       const data: string[] = [];
@@ -300,9 +314,6 @@ export default function Capture() {
       }
       if (capturedScreenshots && capturedScreenshots.length > 0) {
         data.push(capturedScreenshots.map((name) => `![[${name}]]`).join("\n"));
-      }
-      if (pageContent) {
-        data.push(`## Page Content\n\n${pageContent}`);
       }
       return data.join("\n\n");
     };
@@ -380,6 +391,33 @@ export default function Capture() {
     await showToast({ style: Toast.Style.Success, title: "Screenshot removed" });
   }
 
+  async function saveClipboardImage(attachmentsDir: string): Promise<string | null> {
+    const now = new Date();
+    const ts = [
+      now.getFullYear().toString().slice(2),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0"),
+      String(now.getSeconds()).padStart(2, "0"),
+    ].join("");
+    const imageName = `clipboard-${ts}.png`;
+    const imagePath = fsPath.join(attachmentsDir, imageName);
+
+    try {
+      await runAppleScript(`
+set imageData to the clipboard as «class PNGf»
+set outputPath to "${imagePath.replace(/"/g, '\\"')}"
+set fileRef to open for access POSIX file outputPath with write permission
+write imageData to fileRef
+close access fileRef`);
+      if (fs.existsSync(imagePath)) return imageName;
+    } catch {
+      // clipboard image save failed
+    }
+    return null;
+  }
+
   async function captureNote(
     {
       fileName: rawFileName,
@@ -397,20 +435,6 @@ export default function Capture() {
     const normalizedPath = normalizePath(path);
     const fullFilePath = normalizedPath ? `${normalizedPath}/${safeFileName}` : safeFileName;
 
-    let fetchedPageContent = "";
-    let fetchWarning = "";
-
-    if (includePageContent && linkValue) {
-      try {
-        const fetched = await fetchPageContent(linkValue);
-        fetchedPageContent = fetched.content;
-        fetchWarning = fetched.warning || "";
-      } catch (error) {
-        fetchedPageContent = `Source: ${linkValue}`;
-        fetchWarning = classifyFetchError(error);
-      }
-    }
-
     try {
       if (vault) await LocalStorage.setItem("vault", vault);
       await LocalStorage.setItem("path", normalizedPath || DEFAULT_PATH);
@@ -418,13 +442,22 @@ export default function Capture() {
       const vaultObj = vaultsWithPlugin.find((v) => v.name === vault);
       if (!vaultObj) throw new Error("Vault not found");
 
+      const allScreenshots = [...screenshots];
+      if (includeClipboardImage && clipboardHasImage) {
+        const attachmentsDir = fsPath.join(vaultObj.path, normalizedPath || DEFAULT_PATH, "attachments");
+        if (!fs.existsSync(attachmentsDir)) {
+          fs.mkdirSync(attachmentsDir, { recursive: true });
+        }
+        const savedName = await saveClipboardImage(attachmentsDir);
+        if (savedName) allScreenshots.push(savedName);
+      }
+
       const noteData = formattedData({
         content,
         link: linkValue,
         highlight: Boolean(highlight),
         highlightAsCodeBlock: Boolean(highlightAsCodeBlock),
-        pageContent: fetchedPageContent,
-        capturedScreenshots: screenshots,
+        capturedScreenshots: allScreenshots,
       });
 
       const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
@@ -454,12 +487,6 @@ export default function Capture() {
         }, 200);
       }
 
-      if (fetchWarning) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: fetchWarning,
-        });
-      }
     } catch (e) {
       showToast({
         style: Toast.Style.Failure,
@@ -524,6 +551,8 @@ export default function Capture() {
                 setResourceInfo("");
                 setSelectedResource("");
                 setSelectedText("");
+                setClipboardHasImage(false);
+                setIncludeClipboardImage(false);
                 setNoteContent("");
                 setDebouncedNoteContent("");
                 setScreenshots([]);
@@ -532,7 +561,6 @@ export default function Capture() {
                 setHasManualTitleOverride(false);
                 setIsGeneratingTitle(false);
                 setWrapHighlightInCodeBlock(false);
-                setIncludePageContent(false);
                 showToast({
                   style: Toast.Style.Success,
                   title: "Capture Cleared",
@@ -597,13 +625,13 @@ export default function Capture() {
           />
         )}
 
-        {selectedResource && (
+        {clipboardHasImage && (
           <Form.Checkbox
-            id="includePageContent"
-            title="Include page content"
+            id="includeClipboardImage"
+            title="Include Clipboard Image"
             label=""
-            value={includePageContent}
-            onChange={setIncludePageContent}
+            value={includeClipboardImage}
+            onChange={setIncludeClipboardImage}
           />
         )}
 
