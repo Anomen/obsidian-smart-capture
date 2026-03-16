@@ -18,7 +18,7 @@ end tell
 
 const getLinkFromArcScript = (separator: string) => `
 tell application "Arc"
-    if (exists front window) then
+    if (count of windows) > 0 then
         return URL of active tab of front window & "${separator}" & title of active tab of front window
     else
         error "Arc is not displaying a web page!"
