@@ -175,7 +175,8 @@ export default function Capture() {
   }, [noteContent]);
 
   useEffect(() => {
-    const hasContext = resourceInfo || selectedText || debouncedNoteContent;
+    const effectiveHighlight = includeHighlight ? selectedText : "";
+    const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent;
     if (!hasContext) return;
 
     let aiEnabled = false;
@@ -202,7 +203,7 @@ export default function Capture() {
       setIsGeneratingTitle(true);
       try {
         const aiResult = await generateAITitle({
-          text: selectedText || undefined,
+          text: effectiveHighlight || undefined,
           appName: activeAppName,
           pageTitle: resourceInfo || undefined,
           noteContent: debouncedNoteContent || undefined,
@@ -236,7 +237,7 @@ export default function Capture() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeAppName, resourceInfo, selectedText, debouncedNoteContent]);
+  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent]);
 
   useEffect(() => {
     const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
