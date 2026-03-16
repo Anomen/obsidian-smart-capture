@@ -421,7 +421,17 @@ close access fileRef`);
     if (fullPath && fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
     }
-    setScreenshots((prev) => prev.slice(0, -1));
+    const remaining = screenshots.slice(0, -1);
+    setScreenshots(remaining);
+
+    const ocrParts = await Promise.all(
+      remaining.map((name) => {
+        const p = getScreenshotAbsolutePath(name);
+        return p ? extractTextFromImage(p) : Promise.resolve("");
+      })
+    );
+    setScreenshotOcrText(ocrParts.filter(Boolean).join(" "));
+
     await showToast({ style: Toast.Style.Success, title: "Screenshot removed" });
   }
 
