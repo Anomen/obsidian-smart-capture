@@ -70,12 +70,17 @@ export default function Capture() {
   const [hasManualTitleOverride, setHasManualTitleOverride] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
+  const [screenshots, setScreenshots] = useState<string[]>([]);
+
   const fileNameRef = useRef(fileName);
   const autoTitleRef = useRef(autoTitle);
   const hasManualTitleOverrideRef = useRef(hasManualTitleOverride);
   fileNameRef.current = fileName;
   autoTitleRef.current = autoTitle;
   hasManualTitleOverrideRef.current = hasManualTitleOverride;
+
+  const currentVaultRef = useRef(defaultVault || "");
+  const currentPathRef = useRef(defaultPath);
 
   useEffect(() => {
     let mounted = true;
@@ -274,12 +279,14 @@ export default function Capture() {
       highlight,
       highlightAsCodeBlock,
       pageContent,
+      capturedScreenshots,
     }: {
       content?: string;
       link?: string;
       highlight?: boolean;
       highlightAsCodeBlock?: boolean;
       pageContent?: string;
+      capturedScreenshots?: string[];
     }) => {
       const data: string[] = [];
       if (content) {
@@ -291,12 +298,60 @@ export default function Capture() {
       if (highlight) {
         data.push(highlightAsCodeBlock ? `\`\`\`\n${selectedText}\n\`\`\`` : `> ${selectedText}`);
       }
+      if (capturedScreenshots && capturedScreenshots.length > 0) {
+        data.push(capturedScreenshots.map((name) => `![[${name}]]`).join("\n"));
+      }
       if (pageContent) {
         data.push(`## Page Content\n\n${pageContent}`);
       }
       return data.join("\n\n");
     };
   }, [resourceInfo, selectedText]);
+
+  async function captureScreenshot() {
+    const vaultName = currentVaultRef.current;
+    const vaultObj = vaultsWithPlugin.find((v) => v.name === vaultName);
+    if (!vaultObj) {
+      await showToast({ style: Toast.Style.Failure, title: "Select a vault first" });
+      return;
+    }
+
+    const storagePath = normalizePath(currentPathRef.current) || DEFAULT_PATH;
+    const attachmentsDir = fsPath.join(vaultObj.path, storagePath, "attachments");
+
+    if (!fs.existsSync(attachmentsDir)) {
+      fs.mkdirSync(attachmentsDir, { recursive: true });
+    }
+
+    const now = new Date();
+    const ts = [
+      now.getFullYear().toString().slice(2),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0"),
+      String(now.getSeconds()).padStart(2, "0"),
+    ].join("");
+    const screenshotName = `capture-${ts}-${screenshots.length + 1}.png`;
+    const screenshotPath = fsPath.join(attachmentsDir, screenshotName);
+
+    await closeMainWindow();
+
+    try {
+      await runAppleScript(`do shell script "screencapture -i '${screenshotPath.replace(/'/g, "'\\''")}'"`);
+    } catch {
+      // screencapture exits non-zero when cancelled
+    }
+
+    await open("raycast://");
+
+    if (fs.existsSync(screenshotPath)) {
+      setScreenshots((prev) => [...prev, screenshotName]);
+      await showToast({ style: Toast.Style.Success, title: "Screenshot captured" });
+    } else {
+      await showToast({ style: Toast.Style.Animated, title: "Screenshot cancelled" });
+    }
+  }
 
   async function captureNote(
     {
@@ -342,6 +397,7 @@ export default function Capture() {
         highlight: Boolean(highlight),
         highlightAsCodeBlock: Boolean(highlightAsCodeBlock),
         pageContent: fetchedPageContent,
+        capturedScreenshots: screenshots,
       });
 
       const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
@@ -413,6 +469,12 @@ export default function Capture() {
               onSubmit={createNewNoteAndOpen}
             />
             <Action
+              title="Capture Screenshot"
+              icon={Icon.Camera}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "5" }}
+              onAction={captureScreenshot}
+            />
+            <Action
               title="Clear Capture"
               onAction={() => {
                 setActiveAppName("");
@@ -421,6 +483,7 @@ export default function Capture() {
                 setSelectedText("");
                 setNoteContent("");
                 setDebouncedNoteContent("");
+                setScreenshots([]);
                 setFileName("");
                 setAutoTitle("");
                 setHasManualTitleOverride(false);
@@ -436,7 +499,12 @@ export default function Capture() {
           </ActionPanel>
         }
       >
-        <Form.Dropdown id="vault" title="Vault" defaultValue={defaultVault}>
+        <Form.Dropdown
+          id="vault"
+          title="Vault"
+          defaultValue={defaultVault}
+          onChange={(v) => { currentVaultRef.current = v; }}
+        >
           {vaultsWithPlugin.map((vault) => (
             <Form.Dropdown.Item key={vault.key} value={vault.name} title={vault.name} icon="🧳" />
           ))}
@@ -448,6 +516,7 @@ export default function Capture() {
           defaultValue={defaultPath}
           info="Path where newly captured notes will be saved"
           storeValue={true}
+          onChange={(v) => { currentPathRef.current = v; }}
         />
 
         <Form.TextField
@@ -516,6 +585,13 @@ export default function Capture() {
         )}
 
         {selectedText && includeHighlight && <Form.Description title="Highlight" text={selectedText} />}
+
+        {screenshots.length > 0 && (
+          <Form.Description
+            title="Screenshots"
+            text={`${screenshots.length} screenshot(s) attached`}
+          />
+        )}
       </Form>
     );
   }
