@@ -3,7 +3,6 @@ import {
   Form,
   getSelectedText,
   Action,
-  open,
   showToast,
   Toast,
   showHUD,
@@ -16,6 +15,8 @@ import {
 } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import { runAppleScript } from "@raycast/utils";
+import fs from "fs";
+import fsPath from "path";
 import { GET_ACTIVE_APP_SCRIPT, GET_LINK_FROM_BROWSER_SCRIPT, SUPPORTED_BROWSERS } from "./scripts/browser";
 import { useObsidianVaults, vaultPluginCheck } from "./utils/utils";
 import { NoVaultFoundMessage } from "./components/Notifications/NoVaultFoundMessage";
@@ -225,13 +226,30 @@ export default function Capture() {
       if (vault) await LocalStorage.setItem("vault", vault);
       await LocalStorage.setItem("path", normalizedPath || DEFAULT_PATH);
 
-      const target = `obsidian://advanced-uri?vault=${encodeURIComponent(vault)}&filepath=${encodeURIComponent(
-        fullFilePath
-      )}&data=${encodeURIComponent(
-        formattedData({ content, link: linkValue, highlight: Boolean(highlight), pageContent: fetchedPageContent })
-      )}`;
+      const vaultObj = vaultsWithPlugin.find((v) => v.name === vault);
+      if (!vaultObj) throw new Error("Vault not found");
 
-      await open(target);
+      const noteData = formattedData({
+        content,
+        link: linkValue,
+        highlight: Boolean(highlight),
+        pageContent: fetchedPageContent,
+      });
+
+      const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
+      const absolutePath = fsPath.join(vaultObj.path, noteFileName);
+      const dir = fsPath.dirname(absolutePath);
+
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      if (fs.existsSync(absolutePath)) {
+        fs.appendFileSync(absolutePath, `\n\n${noteData}`, "utf8");
+      } else {
+        fs.writeFileSync(absolutePath, noteData, "utf8");
+      }
+
       popToRoot();
       closeMainWindow();
       showHUD("Note Captured", { clearRootSearch: true });
@@ -332,7 +350,7 @@ export default function Capture() {
           />
         )}
 
-        <Form.TextArea title="Note" id="content" placeholder={"Notes about the resource"} />
+        <Form.TextArea title="Note" id="content" placeholder={"Notes about the resource"} enableMarkdown={true} />
 
         {selectedResource && resourceInfo && (
           <Form.TagPicker id="link" title="Link" defaultValue={[selectedResource]}>
