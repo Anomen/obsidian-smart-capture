@@ -49,6 +49,7 @@ export default function Capture() {
 
   const [selectedText, setSelectedText] = useState<string>("");
   const [includeHighlight, setIncludeHighlight] = useState<boolean>(true);
+  const [wrapHighlightInCodeBlock, setWrapHighlightInCodeBlock] = useState<boolean>(false);
   const [includePageContent, setIncludePageContent] = useState<boolean>(false);
 
   const [selectedResource, setSelectedResource] = useState<string>("");
@@ -179,11 +180,13 @@ export default function Capture() {
       content,
       link,
       highlight,
+      highlightAsCodeBlock,
       pageContent,
     }: {
       content?: string;
       link?: string;
       highlight?: boolean;
+      highlightAsCodeBlock?: boolean;
       pageContent?: string;
     }) => {
       const data: string[] = [];
@@ -194,7 +197,7 @@ export default function Capture() {
         data.push(`[${resourceInfo || link}](${link})`);
       }
       if (highlight) {
-        data.push(`> ${selectedText}`);
+        data.push(highlightAsCodeBlock ? `\`\`\`\n${selectedText}\n\`\`\`` : `> ${selectedText}`);
       }
       if (pageContent) {
         data.push(`## Page Content\n\n${pageContent}`);
@@ -203,7 +206,15 @@ export default function Capture() {
     };
   }, [resourceInfo, selectedText]);
 
-  async function createNewNote({ fileName: rawFileName, content, link, vault, path, highlight }: Form.Values) {
+  async function createNewNote({
+    fileName: rawFileName,
+    content,
+    link,
+    vault,
+    path,
+    highlight,
+    highlightAsCodeBlock,
+  }: Form.Values) {
     const linkValue = Array.isArray(link) ? link[0] : link;
     const safeFileName = sanitizeFileName(rawFileName || resourceInfo);
     const normalizedPath = normalizePath(path);
@@ -234,6 +245,7 @@ export default function Capture() {
         content,
         link: linkValue,
         highlight: Boolean(highlight),
+        highlightAsCodeBlock: Boolean(highlightAsCodeBlock),
         pageContent: fetchedPageContent,
       });
 
@@ -293,6 +305,7 @@ export default function Capture() {
                 setFileName("");
                 setAutoTitle("");
                 setHasManualTitleOverride(false);
+                setWrapHighlightInCodeBlock(false);
                 setIncludePageContent(false);
                 showToast({
                   style: Toast.Style.Success,
@@ -340,6 +353,16 @@ export default function Capture() {
             label=""
             value={includeHighlight}
             onChange={setIncludeHighlight}
+          />
+        )}
+
+        {selectedText && (
+          <Form.Checkbox
+            id="highlightAsCodeBlock"
+            title="Wrap in Code Block"
+            label=""
+            value={wrapHighlightInCodeBlock}
+            onChange={setWrapHighlightInCodeBlock}
           />
         )}
 
