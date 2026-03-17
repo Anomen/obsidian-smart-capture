@@ -3,7 +3,6 @@ import {
   Clipboard,
   environment,
   Form,
-  getSelectedText,
   Action,
   open,
   showToast,
@@ -189,12 +188,16 @@ end try`);
       }
 
       try {
-        const [data, clipboardText] = await Promise.all([
-          getSelectedText().catch(() => ""),
-          Clipboard.readText().catch(() => undefined),
-        ]);
-        if (mounted && data && data !== clipboardText) {
-          setSelectedText(data);
+        const selection = (await runAppleScript(`
+tell application "System Events" to tell (first application process whose frontmost is true)
+    try
+        return value of attribute "AXSelectedText" of (value of attribute "AXFocusedUIElement")
+    on error
+        return ""
+    end try
+end tell`)).trim();
+        if (mounted && selection) {
+          setSelectedText(selection);
         }
       } catch (error) {
         console.log(error);
