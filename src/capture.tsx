@@ -47,7 +47,7 @@ function sleep(ms: number) {
 
 export default function Capture() {
   const { ready, vaults: allVaults } = useObsidianVaults();
-  const [vaultsWithPlugin] = vaultPluginCheck(allVaults, "obsidian-advanced-uri");
+  const [vaultsWithPlugin] = useMemo(() => vaultPluginCheck(allVaults, "obsidian-advanced-uri"), [allVaults]);
 
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const [defaultVault, setDefaultVault] = useState<string | undefined>(undefined);

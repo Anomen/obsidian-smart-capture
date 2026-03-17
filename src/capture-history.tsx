@@ -3,24 +3,20 @@ import {
   ActionPanel,
   Alert,
   Clipboard,
-  Color,
   confirmAlert,
   Icon,
   List,
+  LocalStorage,
   open,
   showToast,
   Toast,
 } from "@raycast/api";
 import { runAppleScript } from "@raycast/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import fs from "fs";
-import path from "path";
-import {
-  CaptureRecord,
-  clearCaptureHistory,
-  getCaptureHistory,
-  removeCaptureRecord,
-} from "./utils/capture-history";
+import fsPath from "path";
+import { useObsidianVaults, vaultPluginCheck } from "./utils/utils";
+import { CaptureRecord } from "./utils/capture-history";
 
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -49,9 +45,9 @@ function readNoteContent(filePath: string): string {
     if (!fs.existsSync(filePath)) return "*File not found*";
     const raw = fs.readFileSync(filePath, "utf8");
     const noFrontmatter = raw.replace(/^---\n[\s\S]*?\n---\n*/, "");
-    const noteDir = path.dirname(filePath);
+    const noteDir = fsPath.dirname(filePath);
     return noFrontmatter.replace(/!\[\[([^\]]+)\]\]/g, (_match, name: string) => {
-      const absPath = path.join(noteDir, "attachments", name);
+      const absPath = fsPath.join(noteDir, "attachments", name);
       if (fs.existsSync(absPath)) {
         return `![${name}](file://${absPath.replace(/ /g, "%20")})`;
       }
@@ -62,21 +58,68 @@ function readNoteContent(filePath: string): string {
   }
 }
 
+function parseDateFromFrontmatter(content: string): Date | null {
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return null;
+  const dateMatch = fmMatch[1].match(/^date:\s*(.+)$/m);
+  if (!dateMatch) return null;
+  const parsed = new Date(dateMatch[1].trim());
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function CaptureHistory() {
+  const { ready, vaults: allVaults } = useObsidianVaults();
+  const [vaultsWithPlugin] = useMemo(() => vaultPluginCheck(allVaults, "obsidian-advanced-uri"), [allVaults]);
   const [records, setRecords] = useState<CaptureRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDetail, setShowDetail] = useState(true);
 
   async function loadHistory() {
     setIsLoading(true);
-    const history = await getCaptureHistory();
-    setRecords(history);
+
+    const savedPath = await LocalStorage.getItem<string>("path");
+    const captureDir = savedPath || "Capture";
+    const allRecords: CaptureRecord[] = [];
+
+    for (const vault of vaultsWithPlugin) {
+      const dirPath = fsPath.join(vault.path, captureDir);
+      if (!fs.existsSync(dirPath)) continue;
+
+      const entries = fs.readdirSync(dirPath);
+      for (const entry of entries) {
+        if (!entry.endsWith(".md") || entry === "sortspec.md") continue;
+        const fullPath = fsPath.join(dirPath, entry);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (!stat.isFile()) continue;
+          const content = fs.readFileSync(fullPath, "utf8");
+          const noteDate = parseDateFromFrontmatter(content);
+          const timestamp = noteDate ? noteDate.getTime() : stat.mtimeMs;
+          const hasLink = /\[.*?\]\(https?:\/\//.test(content);
+          const hasScreenshots = /!\[\[.*?\.(png|jpg|jpeg|gif)\]\]/.test(content);
+
+          allRecords.push({
+            title: entry.replace(/\.md$/, ""),
+            path: fullPath,
+            vaultName: vault.name,
+            timestamp,
+            hasLink,
+            hasScreenshots,
+          });
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    allRecords.sort((a, b) => b.timestamp - a.timestamp);
+    setRecords(allRecords);
     setIsLoading(false);
   }
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (ready && vaultsWithPlugin.length > 0) loadHistory();
+  }, [ready, vaultsWithPlugin]);
 
   async function handleOpen(record: CaptureRecord) {
     const uri = `obsidian://open?path=${encodeURIComponent(record.path)}`;
@@ -99,34 +142,19 @@ export default function CaptureHistory() {
     ) {
       if (fs.existsSync(record.path)) {
         const content = fs.readFileSync(record.path, "utf8");
-        const noteDir = path.dirname(record.path);
-        const attachmentsDir = path.join(noteDir, "attachments");
+        const noteDir = fsPath.dirname(record.path);
+        const attachmentsDir = fsPath.join(noteDir, "attachments");
         const embeds = [...content.matchAll(/!\[\[([^\]]+)\]\]/g)].map((m) => m[1]);
         for (const embed of embeds) {
-          const embedPath = path.join(attachmentsDir, embed);
+          const embedPath = fsPath.join(attachmentsDir, embed);
           if (fs.existsSync(embedPath)) {
             fs.unlinkSync(embedPath);
           }
         }
         fs.unlinkSync(record.path);
       }
-      await removeCaptureRecord(record.timestamp);
       await loadHistory();
       await showToast({ style: Toast.Style.Success, title: "Note and attachments deleted" });
-    }
-  }
-
-  async function handleClearAll() {
-    if (
-      await confirmAlert({
-        title: "Clear All History",
-        message: "This removes all entries from history but does not delete any files.",
-        primaryAction: { title: "Clear", style: Alert.ActionStyle.Destructive },
-      })
-    ) {
-      await clearCaptureHistory();
-      await loadHistory();
-      await showToast({ style: Toast.Style.Success, title: "History cleared" });
     }
   }
 
@@ -135,9 +163,9 @@ export default function CaptureHistory() {
       {records.length === 0 && !isLoading ? (
         <List.EmptyView title="No captures yet" description="Captured notes will appear here" />
       ) : (
-        records.map((record) => (
+        records.map((record, idx) => (
           <List.Item
-            key={record.timestamp}
+            key={`${record.path}-${idx}`}
             title={record.title}
             subtitle={showDetail ? undefined : timeAgo(record.timestamp)}
             accessories={
@@ -152,17 +180,7 @@ export default function CaptureHistory() {
             }
             detail={
               <List.Item.Detail
-                markdown={readNoteContent(record.path)}
-                metadata={
-                  <List.Item.Detail.Metadata>
-                    <List.Item.Detail.Metadata.Label title="Vault" text={record.vaultName} icon={Icon.Box} />
-                    <List.Item.Detail.Metadata.Label title="Captured" text={formatTimestamp(record.timestamp)} icon={Icon.Clock} />
-                    {record.hasLink && <List.Item.Detail.Metadata.Label title="Link" icon={Icon.Globe} text="Yes" />}
-                    {record.hasScreenshots && <List.Item.Detail.Metadata.Label title="Screenshots" icon={Icon.Camera} text="Yes" />}
-                    <List.Item.Detail.Metadata.Separator />
-                    <List.Item.Detail.Metadata.Label title="Path" text={record.path} />
-                  </List.Item.Detail.Metadata>
-                }
+                markdown={`# ${record.title}\n\n*${formatTimestamp(record.timestamp)}*\n\n---\n\n${readNoteContent(record.path)}`}
               />
             }
             actions={
@@ -192,10 +210,10 @@ export default function CaptureHistory() {
                   onAction={() => handleDelete(record)}
                 />
                 <Action
-                  title="Clear All History"
-                  icon={Icon.XMarkCircle}
-                  style={Action.Style.Destructive}
-                  onAction={handleClearAll}
+                  title="Refresh"
+                  icon={Icon.ArrowClockwise}
+                  shortcut={{ modifiers: ["cmd"], key: "r" }}
+                  onAction={loadHistory}
                 />
               </ActionPanel>
             }

@@ -29,7 +29,7 @@
     },
     {
       "name": "capture-history",
-      "title": "Capture History",
+      "title": "Obsidian Smart Capture History",
       "description": "Browse and manage recent captures",
       "mode": "view"
     }
