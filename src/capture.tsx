@@ -534,7 +534,8 @@ close access fileRef`);
       try {
         const dailyNotePath = await ensureDailyNote(vaultObj.path, vaultObj.name);
         if (dailyNotePath) {
-          appendCaptureToDailyNote(dailyNotePath, noteFileName.replace(/\.md$/, ""));
+          const noteBaseName = fsPath.basename(noteFileName, ".md");
+          appendCaptureToDailyNote(dailyNotePath, noteBaseName);
         }
       } catch {
         // non-critical, don't block the capture

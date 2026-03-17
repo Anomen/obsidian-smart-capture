@@ -111,7 +111,7 @@ export function removeCaptureFromDailyNote(vaultPath: string, captureRelativePat
   if (!dailyNotePath || !fs.existsSync(dailyNotePath)) return;
 
   const content = fs.readFileSync(dailyNotePath, "utf8");
-  const noteName = captureRelativePath.replace(/\.md$/, "");
+  const noteName = path.basename(captureRelativePath, ".md");
   const filtered = content
     .split("\n")
     .filter((line) => !line.includes(`[[${noteName}]]`))
@@ -129,7 +129,7 @@ export function appendCaptureToDailyNote(dailyNotePath: string, captureNoteName:
   const lines = content.split("\n");
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const linkLine = `- ${time} -- [[${captureNoteName}]]`;
+  const linkLine = `- ${time} ― [[${captureNoteName}]]`;
 
   const capturesIdx = lines.findIndex((line) => /^#\s+Captures\s*$/.test(line));
 
