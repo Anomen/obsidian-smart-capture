@@ -17,6 +17,7 @@ import fs from "fs";
 import fsPath from "path";
 import { useObsidianVaults, vaultPluginCheck } from "./utils/utils";
 import { CaptureRecord } from "./utils/capture-history";
+import { removeCaptureFromDailyNote } from "./utils/daily-note";
 
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -140,6 +141,7 @@ export default function CaptureHistory() {
         primaryAction: { title: "Delete", style: Alert.ActionStyle.Destructive },
       })
     ) {
+      const vaultObj = vaultsWithPlugin.find((v) => v.name === record.vaultName);
       if (fs.existsSync(record.path)) {
         const content = fs.readFileSync(record.path, "utf8");
         const noteDir = fsPath.dirname(record.path);
@@ -152,6 +154,14 @@ export default function CaptureHistory() {
           }
         }
         fs.unlinkSync(record.path);
+      }
+      if (vaultObj) {
+        const relativePath = fsPath.relative(vaultObj.path, record.path);
+        try {
+          removeCaptureFromDailyNote(vaultObj.path, relativePath, new Date(record.timestamp));
+        } catch {
+          // non-critical
+        }
       }
       await loadHistory();
       await showToast({ style: Toast.Style.Success, title: "Note and attachments deleted" });

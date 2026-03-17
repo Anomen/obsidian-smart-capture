@@ -71,12 +71,12 @@ function readPeriodicNotesConfig(vaultPath: string): PeriodicNotesConfig | null 
   }
 }
 
-export function getDailyNotePath(vaultPath: string): string | null {
+export function getDailyNotePath(vaultPath: string, date?: Date): string | null {
   const config = readPeriodicNotesConfig(vaultPath);
   if (!config?.daily?.enabled || !config.daily.format) return null;
 
   const folder = config.daily.folder || "";
-  const formatted = formatDateToken(config.daily.format, new Date());
+  const formatted = formatDateToken(config.daily.format, date ?? new Date());
 
   return path.join(vaultPath, folder, `${formatted}.md`);
 }
@@ -104,6 +104,22 @@ export async function ensureDailyNote(vaultPath: string, vaultName: string): Pro
   }
 
   return null;
+}
+
+export function removeCaptureFromDailyNote(vaultPath: string, captureRelativePath: string, captureDate: Date): void {
+  const dailyNotePath = getDailyNotePath(vaultPath, captureDate);
+  if (!dailyNotePath || !fs.existsSync(dailyNotePath)) return;
+
+  const content = fs.readFileSync(dailyNotePath, "utf8");
+  const noteName = captureRelativePath.replace(/\.md$/, "");
+  const filtered = content
+    .split("\n")
+    .filter((line) => !line.includes(`[[${noteName}]]`))
+    .join("\n");
+
+  if (filtered !== content) {
+    fs.writeFileSync(dailyNotePath, filtered, "utf8");
+  }
 }
 
 export function appendCaptureToDailyNote(dailyNotePath: string, captureNoteName: string): void {
