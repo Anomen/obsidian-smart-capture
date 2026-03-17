@@ -35,6 +35,7 @@ import { resolveAutoTitle, shouldApplyAutoTitle } from "./utils/title-autofill";
 import { generateAITitle, isAITitleEnabled } from "./utils/ai-title";
 import { extractTextFromImage } from "./utils/ocr";
 import { ensureDailyNote, appendCaptureToDailyNote } from "./utils/daily-note";
+import { addCaptureRecord } from "./utils/capture-history";
 
 const DEFAULT_PATH = "inbox";
 const LINK_SEPARATOR = DEFAULT_LINK_SEPARATOR;
@@ -535,6 +536,15 @@ close access fileRef`);
       } catch {
         // non-critical, don't block the capture
       }
+
+      await addCaptureRecord({
+        title: safeFileName,
+        path: absolutePath,
+        vaultName: vaultObj.name,
+        timestamp: Date.now(),
+        hasLink: Boolean(linkValue),
+        hasScreenshots: allScreenshots.length > 0,
+      });
 
       if (options?.openInObsidian) {
         await open(obsidianTarget);

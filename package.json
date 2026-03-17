@@ -26,6 +26,12 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "capture-history",
+      "title": "Capture History",
+      "description": "Browse and manage recent captures",
+      "mode": "view"
     }
   ],
   "dependencies": {
