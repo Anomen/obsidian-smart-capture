@@ -52,10 +52,6 @@ export default function Capture() {
   const [defaultVault, setDefaultVault] = useState<string | undefined>(undefined);
   const [defaultPath, setDefaultPath] = useState<string>(DEFAULT_PATH);
 
-  const [selectedText, setSelectedText] = useState<string>("");
-  const [includeHighlight, setIncludeHighlight] = useState<boolean>(true);
-  const [wrapHighlightInCodeBlock, setWrapHighlightInCodeBlock] = useState<boolean>(false);
-
   const [selectedResource, setSelectedResource] = useState<string>("");
   const [resourceInfo, setResourceInfo] = useState<string>("");
 
@@ -187,21 +183,6 @@ end try`);
         console.log(error);
       }
 
-      try {
-        const selection = (await runAppleScript(`
-tell application "System Events" to tell (first application process whose frontmost is true)
-    try
-        return value of attribute "AXSelectedText" of (value of attribute "AXFocusedUIElement")
-    on error
-        return ""
-    end try
-end tell`)).trim();
-        if (mounted && selection) {
-          setSelectedText(selection);
-        }
-      } catch (error) {
-        console.log(error);
-      }
     };
 
     setText();
@@ -234,10 +215,9 @@ end tell`)).trim();
   }, [includeClipboardImage, clipboardImageTempPath]);
 
   useEffect(() => {
-    const effectiveHighlight = includeHighlight ? selectedText : "";
     const screenshotOcrText = screenshots.map((s) => s.ocrText).filter(Boolean).join(" ");
     const combinedOcrText = [screenshotOcrText, clipboardOcrText].filter(Boolean).join(" ");
-    const hasContext = resourceInfo || effectiveHighlight || debouncedNoteContent || combinedOcrText;
+    const hasContext = resourceInfo || debouncedNoteContent || combinedOcrText;
     if (!hasContext) {
       setAutoTitle("");
       setFileName("");
@@ -268,7 +248,6 @@ end tell`)).trim();
       setIsGeneratingTitle(true);
       try {
         const aiResult = await generateAITitle({
-          text: effectiveHighlight || undefined,
           appName: activeAppName,
           pageTitle: resourceInfo || undefined,
           noteContent: debouncedNoteContent || undefined,
@@ -303,40 +282,26 @@ end tell`)).trim();
       cancelled = true;
       controller.abort();
     };
-  }, [activeAppName, resourceInfo, selectedText, includeHighlight, debouncedNoteContent, screenshots, clipboardOcrText]);
+  }, [activeAppName, resourceInfo, debouncedNoteContent, screenshots, clipboardOcrText]);
 
   useEffect(() => {
-    const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
-    if (selectedText && selectedResource) {
-      showToast({
-        style: Toast.Style.Success,
-        title: `Highlighted text & Source captured${appSuffix}`,
-      });
-    } else if (selectedText) {
-      showToast({
-        style: Toast.Style.Success,
-        title: `Highlighted text captured${appSuffix}`,
-      });
-    } else if (selectedResource) {
+    if (selectedResource) {
+      const appSuffix = activeAppName ? ` from ${activeAppName}` : "";
       showToast({
         style: Toast.Style.Success,
         title: `Link captured${appSuffix}`,
       });
     }
-  }, [selectedText, selectedResource, activeAppName]);
+  }, [selectedResource, activeAppName]);
 
   const formattedData = useMemo(() => {
     return ({
       content,
       link,
-      highlight,
-      highlightAsCodeBlock,
       capturedScreenshots,
     }: {
       content?: string;
       link?: string;
-      highlight?: boolean;
-      highlightAsCodeBlock?: boolean;
       capturedScreenshots?: { name: string; ocrText: string }[];
     }) => {
       const data: string[] = [];
@@ -345,9 +310,6 @@ end tell`)).trim();
       }
       if (link) {
         data.push(`[${resourceInfo || link}](${link})`);
-      }
-      if (highlight) {
-        data.push(highlightAsCodeBlock ? `\`\`\`\n${selectedText}\n\`\`\`` : `> ${selectedText}`);
       }
       if (capturedScreenshots && capturedScreenshots.length > 0) {
         data.push(capturedScreenshots.map((s) => {
@@ -358,7 +320,7 @@ end tell`)).trim();
       }
       return data.join("\n\n");
     };
-  }, [resourceInfo, selectedText]);
+  }, [resourceInfo]);
 
   async function captureScreenshot() {
     const vaultName = currentVaultRef.current;
@@ -475,8 +437,6 @@ close access fileRef`);
       link,
       vault,
       path,
-      highlight,
-      highlightAsCodeBlock,
     }: Form.Values,
     options?: { openInObsidian?: boolean }
   ) {
@@ -503,8 +463,6 @@ close access fileRef`);
       const noteData = formattedData({
         content,
         link: linkValue,
-        highlight: Boolean(highlight),
-        highlightAsCodeBlock: Boolean(highlightAsCodeBlock),
         capturedScreenshots: allScreenshots,
       });
 
@@ -626,7 +584,6 @@ close access fileRef`);
                 setActiveAppName("");
                 setResourceInfo("");
                 setSelectedResource("");
-                setSelectedText("");
                 setClipboardHasImage(false);
                 setIncludeClipboardImage(false);
                 setClipboardImageTempPath("");
@@ -638,7 +595,6 @@ close access fileRef`);
                 setAutoTitle("");
                 setHasManualTitleOverride(false);
                 setIsGeneratingTitle(false);
-                setWrapHighlightInCodeBlock(false);
                 showToast({
                   style: Toast.Style.Success,
                   title: "Capture Cleared",
@@ -683,26 +639,6 @@ close access fileRef`);
           }}
         />
 
-        {selectedText && (
-          <Form.Checkbox
-            id="highlight"
-            title="Include Highlight"
-            label=""
-            value={includeHighlight}
-            onChange={setIncludeHighlight}
-          />
-        )}
-
-        {selectedText && (
-          <Form.Checkbox
-            id="highlightAsCodeBlock"
-            title="Wrap in Code Block"
-            label=""
-            value={wrapHighlightInCodeBlock}
-            onChange={setWrapHighlightInCodeBlock}
-          />
-        )}
-
         {clipboardHasImage && (
           <Form.Checkbox
             id="includeClipboardImage"
@@ -732,8 +668,6 @@ close access fileRef`);
             />
           </Form.TagPicker>
         )}
-
-        {selectedText && includeHighlight && <Form.Description title="Highlight" text={selectedText} />}
 
         {screenshots.length > 0 && (
           <Form.Description
