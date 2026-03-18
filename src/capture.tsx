@@ -4,6 +4,7 @@ import {
   environment,
   Form,
   Action,
+  getPreferenceValues,
   open,
   showToast,
   Toast,
@@ -466,11 +467,32 @@ close access fileRef`);
         capturedScreenshots: allScreenshots,
       });
 
-      let prefix = "";
-      if (allScreenshots.length > 0) prefix += "📸";
-      if (linkValue) prefix += "🌐";
+      const prefs = getPreferenceValues<{
+        titlePrefix?: string;
+        titleSuffix?: string;
+        screenshotTitlePrefix?: string;
+        screenshotTitleSuffix?: string;
+        linkTitlePrefix?: string;
+        linkTitleSuffix?: string;
+      }>();
+
+      const prefixParts: string[] = [];
+      const suffixParts: string[] = [];
+      if (allScreenshots.length > 0) {
+        if (prefs.screenshotTitlePrefix) prefixParts.push(prefs.screenshotTitlePrefix);
+        if (prefs.screenshotTitleSuffix) suffixParts.push(prefs.screenshotTitleSuffix);
+      }
+      if (linkValue) {
+        if (prefs.linkTitlePrefix) prefixParts.push(prefs.linkTitlePrefix);
+        if (prefs.linkTitleSuffix) suffixParts.push(prefs.linkTitleSuffix);
+      }
+      if (prefs.titlePrefix) prefixParts.push(prefs.titlePrefix);
+      if (prefs.titleSuffix) suffixParts.push(prefs.titleSuffix);
+
       const baseName = sanitizeFileName(rawFileName || resourceInfo);
-      const safeFileName = prefix ? `${prefix} ${baseName}` : baseName;
+      const prefix = prefixParts.join("");
+      const suffix = suffixParts.join("");
+      const safeFileName = [prefix, baseName, suffix].filter(Boolean).join(" ");
       const fullFilePath = normalizedPath ? `${normalizedPath}/${safeFileName}` : safeFileName;
       const noteFileName = fullFilePath.endsWith(".md") ? fullFilePath : `${fullFilePath}.md`;
       const absolutePath = fsPath.join(vaultObj.path, noteFileName);

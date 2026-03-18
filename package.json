@@ -24,6 +24,54 @@
           "default": true,
           "label": "Enable AI title suggestions",
           "required": false
+        },
+        {
+          "name": "titlePrefix",
+          "title": "Title Prefix",
+          "description": "Text added before the title on every capture",
+          "type": "textfield",
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "titleSuffix",
+          "title": "Title Suffix",
+          "description": "Text added after the title on every capture",
+          "type": "textfield",
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "screenshotTitlePrefix",
+          "title": "Screenshot Title Prefix",
+          "description": "Text added before the title when there is a screenshot or clipboard image",
+          "type": "textfield",
+          "default": "📸",
+          "required": false
+        },
+        {
+          "name": "screenshotTitleSuffix",
+          "title": "Screenshot Title Suffix",
+          "description": "Text added after the title when there is a screenshot or clipboard image",
+          "type": "textfield",
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "linkTitlePrefix",
+          "title": "Link Title Prefix",
+          "description": "Text added before the title when there is a web link",
+          "type": "textfield",
+          "default": "🌐",
+          "required": false
+        },
+        {
+          "name": "linkTitleSuffix",
+          "title": "Link Title Suffix",
+          "description": "Text added after the title when there is a web link",
+          "type": "textfield",
+          "default": "",
+          "required": false
         }
       ]
     },
