@@ -20,13 +20,13 @@ function buildPrompt({ appName, pageTitle, noteContent, screenshotText }: Omit<G
     "Generate a short title (3-8 words) for a note. The title must only reflect what is explicitly stated in the content below. Do NOT add topics, categories, or summaries that are not in the content.",
   ];
 
-  if (pageTitle) {
-    parts.push(`Page title: ${pageTitle}.`);
+  if (noteContent) {
+    parts.push(`The user wrote the following note (this is the most important input — the title should primarily reflect this): ${truncateText(noteContent, MAX_TEXT_LENGTH)}`);
   }
 
-  if (noteContent) {
-    const label = pageTitle ? "Additional notes" : "Content";
-    parts.push(`${label}: ${truncateText(noteContent, MAX_TEXT_LENGTH)}`);
+  if (pageTitle) {
+    const label = noteContent ? "Source page title (secondary context)" : "Page title";
+    parts.push(`${label}: ${pageTitle}.`);
   }
 
   if (screenshotText) {
