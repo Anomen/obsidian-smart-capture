@@ -122,7 +122,14 @@ export default function Capture() {
 
     const setText = async () => {
       try {
-        const tmpPath = fsPath.join(environment.supportPath, "clipboard-preview.png");
+        try {
+          for (const f of fs.readdirSync(environment.supportPath)) {
+            if (f.startsWith("clipboard-preview-") && f.endsWith(".png")) {
+              fs.unlinkSync(fsPath.join(environment.supportPath, f));
+            }
+          }
+        } catch { /* ignore cleanup errors */ }
+        const tmpPath = fsPath.join(environment.supportPath, `clipboard-preview-${Date.now()}.png`);
         const saved = await runAppleScript(`
 try
     set imgClasses to {«class PNGf», «class TIFF», JPEG picture}
